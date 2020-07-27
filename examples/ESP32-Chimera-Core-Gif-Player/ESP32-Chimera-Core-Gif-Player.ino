@@ -1,5 +1,3 @@
-#include "AnimatedGIF.h"
-
 #include <ESP32-Chimera-Core.h> // https://github.com/tobozo/ESP32-Chimera-Core or regular M5Stack Core
 #define tft M5.Lcd // syntax sugar
 
@@ -8,16 +6,30 @@
  #define M5STACK_SD SD
 #endif
 
+#include "AnimatedGIF.h"
 
 AnimatedGIF gif;
 
-int xOffset = 0;
-int yOffset = 0;
+// used to center image based on GIF dimensions
+static int xOffset = 0;
+static int yOffset = 0;
 
-File FSGifFile;
+static int totalFiles = 0; // GIF files count
+
+static File FSGifFile; // temp gif file holder
+static File GifRootFolder; // directory listing
+
+std::vector<std::string> GifFiles; // GIF files path
+
+
+static void MyCustomDelay( unsigned long ms ) {
+  delay( ms );
+  //Serial.printf("delay %d\n", ms);
+}
+
 
 static void * GIFOpenFile(char *fname, int32_t *pSize) {
-  Serial.printf("GIFOpenFile( %s, %d)\n", fname, pSize );
+  //Serial.printf("GIFOpenFile( %s )\n", fname );
   FSGifFile = M5STACK_SD.open(fname);
   if (FSGifFile) {
     *pSize = FSGifFile.size();
@@ -26,10 +38,14 @@ static void * GIFOpenFile(char *fname, int32_t *pSize) {
   return NULL;
 }
 
+
 static void GIFCloseFile(void *pHandle) {
+
   File *f = static_cast<File *>(pHandle);
   if (f != NULL)
      f->close();
+  else
+     Serial.println("Can't close file");
 }
 
 
@@ -47,33 +63,40 @@ static int32_t GIFReadFile(GIFFILE *pFile, uint8_t *pBuf, int32_t iLen) {
   return iBytesRead;
 }
 
+
 static int32_t GIFSeekFile(GIFFILE *pFile, int32_t iPosition) {
   int i = micros();
   File *f = static_cast<File *>(pFile->fHandle);
   f->seek(iPosition);
   pFile->iPos = (int32_t)f->position();
   i = micros() - i;
-  Serial.printf("Seek time = %d us\n", i);
+  //Serial.printf("Seek time = %d us\n", i);
   return pFile->iPos;
 }
 
+
 static void TFTDraw(int x, int y, int w, int h, uint16_t* lBuf ) {
-  tft.pushRect( x, y, w, h, lBuf );
+  tft.pushRect( x+xOffset, y+yOffset, w, h, lBuf );
 }
 
 
-int gifPlay( const char* gifPath ) { // 0=infinite
+int gifPlay( char* gifPath ) { // 0=infinite
 
-  gif.setFSCallbacks( GIFOpenFile, GIFCloseFile, GIFReadFile, GIFSeekFile, TFTDraw );
+  gif.begin();
+  gif.setFSCallbacks( GIFOpenFile, GIFCloseFile, GIFReadFile, GIFSeekFile, TFTDraw, MyCustomDelay );
+  //pfnDelay = MyCustomDelay;
 
-  if( ! gif.open((char* )gifPath ) ) {
+  if( ! gif.open( gifPath ) ) {
     Serial.printf("Could not open gif %s\n", gifPath );
-    while(1);
     return 0;
   }
   // center the GIF !!
-  xOffset = ( tft.width()  - gif.getCanvasWidth() )  /2 ;
-  yOffset = ( tft.height() - gif.getCanvasHeight() ) /2;
+  int w = gif.getCanvasWidth();
+  int h = gif.getCanvasHeight();
+  xOffset = ( tft.width()  - w )  /2;
+  yOffset = ( tft.height() - h ) /2;
+
+  Serial.printf("%s : w/h: [%d,%d] = offset [%d,%d]\n", gifPath, w, h, xOffset, yOffset );
 
   int *frameDelay;
   int then = 0;
@@ -81,86 +104,85 @@ int gifPlay( const char* gifPath ) { // 0=infinite
   while (gif.playFrame(true, frameDelay)) {
     then += *frameDelay;
   }
+
   gif.close();
+
   return then;
 }
 
 
-
-File root;
-
-void walk_dir( const char* basePath ) {
-
-  root = M5STACK_SD.open(basePath);
-
-  if(!root){
+int getGifInventory( const char* basePath ) {
+  int amount = 0;
+  GifRootFolder = M5STACK_SD.open(basePath);
+  if(!GifRootFolder){
     log_e("Failed to open directory");
-    return;
+    return 0;
   }
 
-  if(!root.isDirectory()){
+  if(!GifRootFolder.isDirectory()){
     log_e("Not a directory");
-    return;
+    return 0;
   }
 
-  File file = root.openNextFile();
+  File file = GifRootFolder.openNextFile();
+
+  tft.setTextColor( TFT_WHITE, TFT_BLACK );
+  tft.setTextSize( 2 );
+
+  int textPosX = tft.width()/2 - 16;
+  int textPosY = tft.height()/2 - 10;
+
+  tft.drawString("GIF Files:", textPosX-40, textPosY-20 );
 
   while( file ) {
     if(!file.isDirectory()) {
-
-      const char* fileName = file.name();
+      GifFiles.push_back( file.name() );
+      amount++;
+      tft.drawString(String(amount), textPosX, textPosY );
       file.close();
-      tft.clear();
-      int loops = 5; // max 5 loops
-      int durationControl = 3000; // stop loops after 3s
-
-      while(loops-->0 && durationControl > 0 ) {
-        durationControl -= gifPlay( (char*)fileName );
-      }
-    } else file.close();
-
-    file = root.openNextFile();
+    }
+    file = GifRootFolder.openNextFile();
   }
-  root.close();
+  GifRootFolder.close();
+
+  return amount;
 }
 
 
+
+
 void setup() {
-  M5.begin(115200);
-  //while (!Serial);
+  M5.begin();
 
   if(!M5STACK_SD.begin()) {
     Serial.println("SD Card mount failed!");
     return;
   } else {
-    Serial.println("SD Card mount succeeded!");
+    Serial.println("SD Card mounted!");
   }
 
-  // put your setup code here, to run once:
   tft.begin();
-  tft.fillScreen(ILI9341_BLACK);
-  tft.setSwapBytes( true );
-  gif.begin();
-  gif.setFSCallbacks( GIFOpenFile, GIFCloseFile, GIFReadFile, GIFSeekFile, TFTDraw );
+  tft.fillScreen(TFT_BLACK);
+  tft.setSwapBytes( true ); // compensate for default big endian format
+
+  totalFiles = getGifInventory( "/gif" ); // scan the SD card GIF folder
+
 }
 
 
+int currentFile = 0;
+
 void loop() {
 
-  // from the SD example
-  Serial.println("About to call gif.open");
-  if (gif.open((char *)"/gif/wrong_ronnies.gif")) {
-    Serial.printf("Successfully opened GIF; Canvas size = %d x %d\n", gif.getCanvasWidth(), gif.getCanvasHeight());
-    while (gif.playFrame())
-    {
-    }
-    gif.close();
-  } else {
-    Serial.println("Error opening file");
-    while (1)
-    {};
+  tft.clear();
+
+  const char * fileName = GifFiles[currentFile++%totalFiles].c_str();
+
+  int loops = 5; // max 5 loops
+  int durationControl = 3000; // stop loops after 3s
+
+  while(loops-->0 && durationControl > 0 ) {
+    durationControl -= gifPlay( (char*)fileName );
   }
-  // open dir "/gif" and play all files in there
-  walk_dir( "/gif");
 
 }
