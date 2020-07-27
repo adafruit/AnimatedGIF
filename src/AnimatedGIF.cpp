@@ -83,6 +83,7 @@ int AnimatedGIF::getCanvasHeight()
     return _gif.iCanvasHeight;
 } /* getCanvasHeight() */
 
+
 //
 // File (SD/MMC) based initialization
 //
@@ -100,6 +101,38 @@ int AnimatedGIF::open(char *szFilename, GIF_OPEN_CALLBACK *pfnOpen, GIF_CLOSE_CA
 
 } /* open() */
 
+
+//
+// Same as previous but without passing the callbacks every time
+//
+int AnimatedGIF::open(char *szFilename) {
+  if(  _gif.pfnRead  == nullptr
+    || _gif.pfnSeek  == nullptr
+    || pfnDrawAbstract == nullptr
+    || _gif.pfnOpen  == nullptr
+    || _gif.pfnClose == nullptr
+    ) {
+    log_e("Set the callbacks first !");
+    return 0;
+  }
+  _gif.GIFFile.fHandle = (*_gif.pfnOpen)(szFilename, &_gif.GIFFile.iSize);
+    if (_gif.GIFFile.fHandle == NULL)
+       return 0;
+    return GIFInit(&_gif);
+}
+
+//
+// Attach filesystem callbacks
+//
+int AnimatedGIF::setFSCallbacks(GIF_OPEN_CALLBACK *pfnOpen, GIF_CLOSE_CALLBACK *pfnClose, GIF_READ_CALLBACK *pfnRead, GIF_SEEK_CALLBACK *pfnSeek, GIF_DRAWSCANLINE_CALLBACK *_pfnDrawAbstract) {
+    _gif.pfnRead = pfnRead;
+    _gif.pfnSeek = pfnSeek;
+    pfnDrawAbstract = _pfnDrawAbstract;
+    _gif.pfnOpen = pfnOpen;
+    _gif.pfnClose = pfnClose;
+}
+
+
 void AnimatedGIF::close()
 {
     if (_gif.pfnClose)
@@ -110,6 +143,72 @@ void AnimatedGIF::reset()
 {
     (*_gif.pfnSeek)(&_gif.GIFFile, 0);
 } /* reset() */
+
+
+
+
+
+
+static void drawAbstract(GIFDRAW *pDraw) {
+  uint8_t *s;
+  uint16_t *d, *usPalette, usTemp[320];
+  int x, y;
+
+  usPalette = pDraw->pPalette;
+  y = pDraw->iY + pDraw->y; // current line
+
+  s = pDraw->pPixels;
+  // Apply the new pixels to the main image
+  if (pDraw->ucHasTransparency) { // if transparency used
+    uint8_t *pEnd, c, ucTransparent = pDraw->ucTransparent;
+    int x, iCount;
+    pEnd = s + pDraw->iWidth;
+    x = 0;
+    iCount = 0; // count non-transparent pixels
+    while(x < pDraw->iWidth) {
+      c = ucTransparent-1;
+      d = usTemp;
+      while (c != ucTransparent && s < pEnd) {
+        c = *s++;
+        if (c == ucTransparent) {// done, stop
+          s--; // back up to treat it like transparent
+        } else { // opaque
+            *d++ = usPalette[c];
+            iCount++;
+        }
+      } // while looking for opaque pixels
+      if (iCount) {// any opaque pixels?
+        (*pfnDrawAbstract)( pDraw->iX+x, y, iCount, 1, usTemp );
+        x += iCount;
+        iCount = 0;
+      }
+      // no, look for a run of transparent pixels
+      c = ucTransparent;
+      while (c == ucTransparent && s < pEnd) {
+        c = *s++;
+        if (c == ucTransparent)
+            iCount++;
+        else
+            s--;
+      }
+      if (iCount) {
+        x += iCount; // skip these
+        iCount = 0;
+      }
+    }
+  } else {
+    s = pDraw->pPixels;
+    // Translate the 8-bit pixels through the RGB565 palette (already byte reversed)
+    for (x=0; x<pDraw->iWidth; x++)
+      usTemp[x] = usPalette[*s++];
+    (*pfnDrawAbstract)( pDraw->iX, y, pDraw->iWidth, 1, usTemp );
+  }
+}
+
+
+
+
+
 
 void AnimatedGIF::begin(int iEndian)
 {
@@ -126,7 +225,7 @@ int AnimatedGIF::playFrame(bool bSync, int *delayMilliseconds)
 {
 int rc;
 long lTime = millis();
-    
+
     if (_gif.GIFFile.iPos >= _gif.GIFFile.iSize-1) // no more data exists
     {
         (*_gif.pfnSeek)(&_gif.GIFFile, 0); // seek to start
@@ -182,7 +281,7 @@ static int GIFParseInfo(GIFIMAGE *pPage, int bInfoOnly)
     int32_t iOffset = 0;
     int32_t iStartPos = pPage->GIFFile.iPos; // starting file position
     int iReadSize;
-    
+
     pPage->bUseLocalPalette = 0; // assume no local palette
     pPage->bEndOfFrame = 0; // we're just getting started
     iReadSize = (bInfoOnly) ? 12 : MAX_CHUNK_SIZE;
@@ -195,7 +294,7 @@ static int GIFParseInfo(GIFIMAGE *pPage, int bInfoOnly)
     if (iStartPos == 0) // start of the file
     { // canvas size
         if (memcmp(p, "GIF89", 5) != 0 && memcmp(p, "GIF87", 5) != 0) // not a GIF file
-           return 0; 
+           return 0;
         pPage->iCanvasWidth = pPage->iWidth = INTELSHORT(&p[6]);
         pPage->iCanvasHeight = pPage->iHeight = INTELSHORT(&p[8]);
         pPage->iBpp = ((p[10] & 0x70) >> 4) + 1;
@@ -318,7 +417,7 @@ static int GIFParseInfo(GIFIMAGE *pPage, int bInfoOnly)
     pPage->iWidth = INTELSHORT(&p[iOffset+4]);
     pPage->iHeight = INTELSHORT(&p[iOffset+6]);
     iOffset += 8;
-    
+
     /* Image descriptor
      7 6 5 4 3 2 1 0    M=0 - use global color map, ignore pixel
      M I 0 0 0 pixel    M=1 - local color map follows, use pixel
@@ -331,7 +430,7 @@ static int GIFParseInfo(GIFIMAGE *pPage, int bInfoOnly)
     {// convert to byte-reversed RGB565 for immediate use
         j = (1<<((pPage->ucMap & 7)+1));
         // Read enough additional data for the color table
-        iBytesRead += (*pPage->pfnRead)(&pPage->GIFFile, &pPage->ucFileBuf[iBytesRead], j*3);            
+        iBytesRead += (*pPage->pfnRead)(&pPage->GIFFile, &pPage->ucFileBuf[iBytesRead], j*3);
         for (i=0; i<j; i++)
         {
             uint16_t usRGB565;
@@ -437,7 +536,7 @@ static void GIFMakePels(GIFIMAGE *pPage, unsigned int code)
         code = giftabs[code];
     }
     iPixCount = (int)(intptr_t)(pPage->ucFileBuf + FILE_BUF_SIZE - s);
-    
+
     while (iPixCount && pPage->iYCount > 0)
     {
         if (pPage->iXCount > iPixCount)  /* Pixels fit completely on the line */
@@ -474,7 +573,7 @@ static void GIFMakePels(GIFIMAGE *pPage, unsigned int code)
             gd.ucTransparent = pPage->ucTransparent;
             gd.ucHasTransparency = pPage->ucGIFBits & 1;
             gd.ucBackground = pPage->ucBackground;
-            (*pPage->pfnDraw)(&gd); // callback to handle this line
+            drawAbstract(&gd); // callback to handle this line
             pPage->iYCount--;
             buf = pPage->ucLineBuf;
             if ((pPage->iYCount & 3) == 0) // since we support only small images...
@@ -508,7 +607,7 @@ static int DecodeLZW(GIFIMAGE *pImage, int iOptions)
     // if output can be used for string table, do it faster
     //       if (bGIF && (OutPage->cBitsperpixel == 8 && ((OutPage->iWidth & 3) == 0)))
     //          return PILFastLZW(InPage, OutPage, bGIF, iOptions);
-        
+
     p = pImage->ucLZW; // un-chunked LZW data
     sMask = -1 << (pImage->ucCodeStart + 1);
     sMask = 0xffff - sMask;
