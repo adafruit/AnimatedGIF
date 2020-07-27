@@ -56,9 +56,18 @@ typedef void (GIF_DRAW_CALLBACK)(GIFDRAW *pDraw);
 typedef void * (GIF_OPEN_CALLBACK)(char *szFilename, int32_t *pFileSize);
 typedef void (GIF_CLOSE_CALLBACK)(void *pHandle);
 typedef void (GIF_DRAWSCANLINE_CALLBACK)(int x, int y, int w, int h, uint16_t* lBuf );
+typedef void (GIF_DELAY_CALLBACK)(unsigned long ms);
 
 // user TFT draw callback, kept oustide private struct
 static GIF_DRAWSCANLINE_CALLBACK *pfnDrawAbstract;
+static GIF_DELAY_CALLBACK *pfnDelay;
+
+// just aliasing delay(), overload that later if necessary
+static void defaultDelay( unsigned long ms )
+{
+  delay( ms );
+}
+
 
 //
 // our private structure to hold a GIF image decode state
@@ -99,7 +108,7 @@ class AnimatedGIF
     int open(uint8_t *pData, int iDataSize, GIF_DRAW_CALLBACK *pfnDraw);
     int open(char *szFilename, GIF_OPEN_CALLBACK *pfnOpen, GIF_CLOSE_CALLBACK *pfnClose, GIF_READ_CALLBACK *pfnRead, GIF_SEEK_CALLBACK *pfnSeek, GIF_DRAW_CALLBACK *pfnDraw);
     int open(char *szFilename);
-    int setFSCallbacks(GIF_OPEN_CALLBACK *pfnOpen, GIF_CLOSE_CALLBACK *pfnClose, GIF_READ_CALLBACK *pfnRead, GIF_SEEK_CALLBACK *pfnSeek, GIF_DRAWSCANLINE_CALLBACK *pfnDrawAbstract);
+    int setFSCallbacks(GIF_OPEN_CALLBACK *pfnOpen, GIF_CLOSE_CALLBACK *pfnClose, GIF_READ_CALLBACK *pfnRead, GIF_SEEK_CALLBACK *pfnSeek, GIF_DRAWSCANLINE_CALLBACK *pfnDrawAbstract, GIF_DELAY_CALLBACK *pfnDelay);
     //void drawAbstract(GIFDRAW *pDraw);
     void close();
     void reset();

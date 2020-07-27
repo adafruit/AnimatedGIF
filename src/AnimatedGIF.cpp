@@ -109,7 +109,8 @@ int AnimatedGIF::open(char *szFilename, GIF_OPEN_CALLBACK *pfnOpen, GIF_CLOSE_CA
 //
 // Same as previous but without passing the callbacks every time
 //
-int AnimatedGIF::open(char *szFilename) {
+int AnimatedGIF::open(char *szFilename)
+{
   if(  _gif.pfnRead  == nullptr
     || _gif.pfnSeek  == nullptr
     || pfnDrawAbstract == nullptr
@@ -123,7 +124,10 @@ int AnimatedGIF::open(char *szFilename) {
     if (_gif.GIFFile.fHandle == NULL)
        return 0;
     if( GIFInit(&_gif) ) {
-      if( getCanvasWidth() > MAX_WIDTH ) return 0;
+      if( getCanvasWidth() > MAX_WIDTH ) {
+        close();
+        return 0;
+      }
       return 1;
     }
     return 0;
@@ -132,12 +136,20 @@ int AnimatedGIF::open(char *szFilename) {
 //
 // Attach filesystem callbacks
 //
-int AnimatedGIF::setFSCallbacks(GIF_OPEN_CALLBACK *pfnOpen, GIF_CLOSE_CALLBACK *pfnClose, GIF_READ_CALLBACK *pfnRead, GIF_SEEK_CALLBACK *pfnSeek, GIF_DRAWSCANLINE_CALLBACK *_pfnDrawAbstract) {
+int AnimatedGIF::setFSCallbacks(
+  GIF_OPEN_CALLBACK *pfnOpen,
+  GIF_CLOSE_CALLBACK *pfnClose,
+  GIF_READ_CALLBACK *pfnRead,
+  GIF_SEEK_CALLBACK *pfnSeek,
+  GIF_DRAWSCANLINE_CALLBACK *_pfnDrawAbstract,
+  GIF_DELAY_CALLBACK *_pfnDelay)
+{
     _gif.pfnRead = pfnRead;
     _gif.pfnSeek = pfnSeek;
-    pfnDrawAbstract = _pfnDrawAbstract;
     _gif.pfnOpen = pfnOpen;
     _gif.pfnClose = pfnClose;
+    if( _pfnDrawAbstract!=NULL) pfnDrawAbstract = _pfnDrawAbstract;
+    if( _pfnDelay!=NULL) pfnDelay = _pfnDelay;
 }
 
 
@@ -222,6 +234,7 @@ void AnimatedGIF::begin(int iEndian)
 {
     memset(&_gif, 0, sizeof(_gif));
     _gif.ucLittleEndian = (iEndian == LITTLE_ENDIAN_PIXELS);
+    pfnDelay = defaultDelay;
 }
 //
 // Play a single frame
@@ -231,8 +244,8 @@ void AnimatedGIF::begin(int iEndian)
 // -1 = error
 int AnimatedGIF::playFrame(bool bSync, int *delayMilliseconds)
 {
-int rc;
-long lTime = millis();
+    int rc;
+    long lTime = millis();
 
     if (_gif.GIFFile.iPos >= _gif.GIFFile.iSize-1) // no more data exists
     {
@@ -253,7 +266,8 @@ long lTime = millis();
     {
         lTime = millis() - lTime;
         if (lTime < _gif.iFrameDelay) // need to pause a bit
-           delay(_gif.iFrameDelay - lTime);
+          (*pfnDelay)(_gif.iFrameDelay - lTime);
+           //delay(_gif.iFrameDelay - lTime);
     }
     if (delayMilliseconds) // if not NULL, return the frame delay time
         *delayMilliseconds = _gif.iFrameDelay;
