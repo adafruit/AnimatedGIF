@@ -97,7 +97,11 @@ int AnimatedGIF::open(char *szFilename, GIF_OPEN_CALLBACK *pfnOpen, GIF_CLOSE_CA
     _gif.GIFFile.fHandle = (*pfnOpen)(szFilename, &_gif.GIFFile.iSize);
     if (_gif.GIFFile.fHandle == NULL)
        return 0;
-    return GIFInit(&_gif);
+    if( GIFInit(&_gif) ) {
+      if( getCanvasWidth() > MAX_WIDTH ) return 0;
+      return 1;
+    }
+    return 0;
 
 } /* open() */
 
@@ -118,7 +122,11 @@ int AnimatedGIF::open(char *szFilename) {
   _gif.GIFFile.fHandle = (*_gif.pfnOpen)(szFilename, &_gif.GIFFile.iSize);
     if (_gif.GIFFile.fHandle == NULL)
        return 0;
-    return GIFInit(&_gif);
+    if( GIFInit(&_gif) ) {
+      if( getCanvasWidth() > MAX_WIDTH ) return 0;
+      return 1;
+    }
+    return 0;
 }
 
 //
