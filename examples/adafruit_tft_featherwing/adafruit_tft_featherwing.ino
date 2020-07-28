@@ -160,7 +160,7 @@ void setup() {
 // this code was tested on a Teensy 4.1 board
 
   // Do this before SD begin to make sure select pins are in proper state
-  tft.begin();
+  tft.begin(32000000);
   tft.setRotation(1); // Feather orientation w USB at top
   tft.fillScreen(ILI9341_BLACK);
 
@@ -180,7 +180,7 @@ void setup() {
 void loop() {
   Serial.println("About to call gif.open");
   // Some test files on SD (in gifs folder): beast.gif bigbuck2.gif dragons.gif krampus-anim.gif
-  if (gif.open((char *)"/gifs/beast.gif", GIFOpenFile, GIFCloseFile, GIFReadFile, GIFSeekFile, GIFDraw))
+  if (gif.open((char *)"/gifs/dragons.gif", GIFOpenFile, GIFCloseFile, GIFReadFile, GIFSeekFile, GIFDraw))
   {
     Serial.printf("Successfully opened GIF; Canvas size = %d x %d\n", gif.getCanvasWidth(), gif.getCanvasHeight());
     while (gif.playFrame(true, NULL))

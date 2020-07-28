@@ -143,8 +143,9 @@ void GIFDraw(GIFDRAW *pDraw)
       tft.setAddrWindow(pDraw->iX, y, pDraw->iWidth, 1);
       tft.writePixels(usTemp, pDraw->iWidth, true, true); // Use DMA, big-endian
     }
-} /* GIFDraw() */
 
+    tft.dmaWait(); // Wait for last writePixels() to finish
+} /* GIFDraw() */
 
 void setup() {
   Serial.begin(115200);
