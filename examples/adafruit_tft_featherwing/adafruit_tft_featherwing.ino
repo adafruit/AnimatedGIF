@@ -1,35 +1,35 @@
-// AnimatedGIF example for Adafruit PyPortal
-// using SdFat library for card reads and DMA for screen updates
+// AnimatedGIF example for Adafruit 2.4" TFT FeatherWing
+// using DMA for screen updates, uses SdFat on M4, SD otherwise
 
 #include <AnimatedGIF.h>
 
 #include "SPI.h"
 #include "Adafruit_GFX.h"
 #include "Adafruit_ILI9341.h"
-#include <SdFat.h> // Instead of SD library
 
-#if defined(ENABLE_EXTENDED_TRANSFER_CLASS) // Do want, much faster
-SdFatEX filesys;
+#if defined(__SAMD51__)
+ #include <SdFat.h>
+ #if defined(ENABLE_EXTENDED_TRANSFER_CLASS) // Do want, much faster
+  SdFatEX filesys;
+ #else
+  SdFat filesys;
+ #endif
 #else
-SdFat filesys;
+ #include <SD.h>
+ #define filesys SD
 #endif
 
-// PyPortal-specific pins
-#define SD_CS         32 // SD card select
-#define TFT_D0        34 // Data bit 0 pin (MUST be on PORT byte boundary)
-#define TFT_WR        26 // Write-strobe pin (CCL-inverted timer output)
-#define TFT_DC        10 // Data/command pin
-#define TFT_CS        11 // Chip-select pin
-#define TFT_RST       24 // Reset pin
-#define TFT_RD         9 // Read-strobe pin
-#define TFT_BACKLIGHT 25 // Backlight enable (active high)
+#define SD_CS  5 // SD card ON TFT FEATHERWING, not on Feather
+#define TFT_CS 9
+#define TFT_DC 10
 
-Adafruit_ILI9341 tft(tft8bitbus, TFT_D0, TFT_WR, TFT_DC, TFT_CS, TFT_RST, TFT_RD);
+Adafruit_ILI9341 tft(TFT_CS, TFT_DC);
 AnimatedGIF gif;
 File f;
 
 void * GIFOpenFile(char *fname, int32_t *pSize)
 {
+  Serial.printf("Filename is '%s'\n", fname);
   f = filesys.open(fname);
   if (f)
   {
@@ -79,9 +79,11 @@ void GIFDraw(GIFDRAW *pDraw)
     uint16_t *d, *usPalette, usTemp[320];
     int x, y;
 
+    tft.startWrite(); // TFT on SPI bus plz
+
     usPalette = pDraw->pPalette;
     y = pDraw->iY + pDraw->y; // current line
-    
+
     s = pDraw->pPixels;
     // Apply the new pixels to the main image
     if (pDraw->ucHasTransparency) // if transparency used
@@ -143,18 +145,24 @@ void GIFDraw(GIFDRAW *pDraw)
       tft.setAddrWindow(pDraw->iX, y, pDraw->iWidth, 1);
       tft.writePixels(usTemp, pDraw->iWidth, true, true); // Use DMA, big-endian
     }
+
+    tft.dmaWait();  // Wait for last writePixels() to finish
+    tft.endWrite(); // SD can have SPI bus back, thx
+
 } /* GIFDraw() */
 
 
 void setup() {
   Serial.begin(115200);
-  //while (!Serial);
-
-  pinMode(TFT_BACKLIGHT, OUTPUT);
-  digitalWrite(TFT_BACKLIGHT, HIGH); // Backlight on
+  while (!Serial);
 
 // Note - some systems (ESP32?) require an SPI.begin() before calling SD.begin()
 // this code was tested on a Teensy 4.1 board
+
+  // Do this before SD begin to make sure select pins are in proper state
+  tft.begin();
+  tft.setRotation(1); // Feather orientation w USB at top
+  tft.fillScreen(ILI9341_BLACK);
 
   if(!filesys.begin(SD_CS))
   {
@@ -166,16 +174,10 @@ void setup() {
     Serial.println("SD Card mount succeeded!");
   }
 
-  // put your setup code here, to run once:
-  tft.begin();
-  tft.setRotation(3); // PyPortal native orientation
-  tft.fillScreen(ILI9341_BLACK);
-  tft.startWrite(); // Not sharing TFT bus on PyPortal, just CS once and leave it
   gif.begin(BIG_ENDIAN_PIXELS); // TFT is big-endian, faster if no byte swaps
 }
 
 void loop() {
-  // put your main code here, to run repeatedly:
   Serial.println("About to call gif.open");
   // Some test files on SD (in gifs folder): beast.gif bigbuck2.gif dragons.gif krampus-anim.gif
   if (gif.open((char *)"/gifs/beast.gif", GIFOpenFile, GIFCloseFile, GIFReadFile, GIFSeekFile, GIFDraw))
