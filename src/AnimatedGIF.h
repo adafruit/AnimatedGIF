@@ -14,7 +14,11 @@
 #define MAX_CHUNK_SIZE 255
 #define LZW_BUF_SIZE (6*MAX_CHUNK_SIZE)
 #define LZW_HIGHWATER (4*MAX_CHUNK_SIZE)
+#if defined(_VARIANT_PYPORTAL_M4_TITANO_)
+#define MAX_WIDTH 480
+#else
 #define MAX_WIDTH 320
+#endif
 #define FILE_BUF_SIZE 4096
 
 #define PIXEL_FIRST 0
