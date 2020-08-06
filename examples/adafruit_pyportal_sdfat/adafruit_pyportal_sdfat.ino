@@ -81,8 +81,17 @@ void GIFDraw(GIFDRAW *pDraw)
 
     usPalette = pDraw->pPalette;
     y = pDraw->iY + pDraw->y; // current line
-    
+
     s = pDraw->pPixels;
+    if (pDraw->ucDisposalMethod == 2) // restore to background color
+    {
+      for (x=0; x<pDraw->iWidth; x++)
+      {
+        if (s[x] == pDraw->ucTransparent)
+           s[x] = pDraw->ucBackground;
+      }
+      pDraw->ucHasTransparency = 0;
+    }
     // Apply the new pixels to the main image
     if (pDraw->ucHasTransparency) // if transparency used
     {
@@ -124,7 +133,7 @@ void GIFDraw(GIFDRAW *pDraw)
           if (c == ucTransparent)
              iCount++;
           else
-             s--; 
+             s--;
         }
         if (iCount)
         {
@@ -179,7 +188,7 @@ void loop() {
   // put your main code here, to run repeatedly:
   Serial.println("About to call gif.open");
   // Some test files on SD (in gifs folder): beast.gif bigbuck2.gif dragons.gif krampus-anim.gif
-  if (gif.open((char *)"/gifs/beast.gif", GIFOpenFile, GIFCloseFile, GIFReadFile, GIFSeekFile, GIFDraw))
+  if (gif.open((char *)"/gifs/krampus-anim.gif", GIFOpenFile, GIFCloseFile, GIFReadFile, GIFSeekFile, GIFDraw))
   {
     Serial.printf("Successfully opened GIF; Canvas size = %d x %d\n", gif.getCanvasWidth(), gif.getCanvasHeight());
     while (gif.playFrame(true, NULL))

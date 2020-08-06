@@ -1,5 +1,10 @@
-// AnimatedGIF example for Adafruit 2.4" TFT FeatherWing
-// using DMA for screen updates, SdFat or SD depending on board.
+// AnimatedGIF example for Adafruit 2.4" TFT FeatherWing,
+// comparing DMA and non-DMA screen updates, SD vs SdFat
+// read speeds.
+
+// On SAMD21, must use SD and NO screen DMA, there isn't
+// enough RAM for all the bells & whistles. On SAMD51 you
+// can try all the permutations.
 
 // Display DMA can be manually enabled in Adafruit_SPITFT.h.
 // It's only enabled by default on certain boards with a built-in
@@ -18,7 +23,7 @@
 #if defined(USE_SDFAT)
  #include <SdFat.h>
  // Do NOT use the Extended Transfer Class (SdFatEx) with
- // FeatherWing, it does NOT play nice on shared SPI bus!
+ // TFT FeatherWing, it does NOT play nice on shared SPI bus!
  // That's why it's used in PyPortal demo only.
   SdFat SD;
 #else
@@ -129,7 +134,11 @@ void GIFDraw(GIFDRAW *pDraw)
         {
           tft.dmaWait(); // Wait for prior writePixels() to finish
           tft.setAddrWindow(pDraw->iX+x, y, iCount, 1);
+#if defined(USE_SPI_DMA)
           tft.writePixels(usTemp, iCount, true, true); // Use DMA, big-endian
+#else
+          tft.writePixels(usTemp, iCount, false, false);
+#endif
           x += iCount;
           iCount = 0;
         }
@@ -158,7 +167,11 @@ void GIFDraw(GIFDRAW *pDraw)
         usTemp[x] = usPalette[*s++];
       tft.dmaWait(); // Wait for prior writePixels() to finish
       tft.setAddrWindow(pDraw->iX, y, pDraw->iWidth, 1);
+#if defined(USE_SPI_DMA)
       tft.writePixels(usTemp, pDraw->iWidth, true, true); // Use DMA, big-endian
+#else
+      tft.writePixels(usTemp, pDraw->iWidth, false, false);
+#endif
     }
 
     tft.dmaWait(); // Wait for last writePixels() to finish
@@ -167,7 +180,7 @@ void GIFDraw(GIFDRAW *pDraw)
 
 void setup() {
   Serial.begin(115200);
-  while (!Serial);
+// while (!Serial);
 
 // Note - some systems (ESP32?) require an SPI.begin() before calling SD.begin()
 // this code was tested on a Teensy 4.1 board
@@ -185,13 +198,17 @@ void setup() {
   tft.begin();
   tft.setRotation(1); // Feather orientation w USB at top
   tft.fillScreen(ILI9341_BLACK);
+#if defined(USE_SPI_DMA)
   gif.begin(BIG_ENDIAN_PIXELS); // TFT is big-endian, faster if no byte swaps
+#else
+  gif.begin(LITTLE_ENDIAN_PIXELS);
+#endif
 }
 
 void loop() {
   Serial.println("About to call gif.open");
   // Some test files on SD (in gifs folder): beast.gif bigbuck2.gif dragons.gif krampus-anim.gif
-  if (gif.open((char *)"/gifs/beast.gif", GIFOpenFile, GIFCloseFile, GIFReadFile, GIFSeekFile, GIFDraw))
+  if (gif.open((char *)"/gifs/krampus-anim.gif", GIFOpenFile, GIFCloseFile, GIFReadFile, GIFSeekFile, GIFDraw))
   {
     Serial.printf("Successfully opened GIF; Canvas size = %d x %d\n", gif.getCanvasWidth(), gif.getCanvasHeight());
     while (gif.playFrame(true, NULL))
