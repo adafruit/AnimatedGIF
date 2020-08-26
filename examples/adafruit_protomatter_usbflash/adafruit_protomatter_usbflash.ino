@@ -36,7 +36,7 @@ bool changed; // Is set true when host writes to filesystem
   uint8_t clockPin   = A4;
   uint8_t latchPin   = 10;
   uint8_t oePin      = 9;
-#elif #defined(_VARIANT_FEATHER_M4_)
+#elif defined(_VARIANT_FEATHER_M4_)
   uint8_t rgbPins[]  = {6, 5, 9, 11, 10, 12};
   uint8_t addrPins[] = {A5, A4, A3, A2};
   uint8_t clockPin   = 13;
@@ -44,9 +44,8 @@ bool changed; // Is set true when host writes to filesystem
   uint8_t oePin      = 1;
 #endif
 
-// 6 bit depth, double-buffered
 Adafruit_Protomatter matrix(
-  64, 6, 1, rgbPins, 4, addrPins, clockPin, latchPin, oePin, true);
+  64, 10, 1, rgbPins, 4, addrPins, clockPin, latchPin, oePin, true);
 
 AnimatedGIF gif;
 File f;
